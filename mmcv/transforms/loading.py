@@ -8,7 +8,7 @@ import numpy as np
 import mmcv
 from .base import BaseTransform
 from .builder import TRANSFORMS
-
+from PIL import Image 
 
 @TRANSFORMS.register_module()
 class LoadImageFromFile(BaseTransform):
@@ -56,12 +56,14 @@ class LoadImageFromFile(BaseTransform):
                  imdecode_backend: str = 'cv2',
                  file_client_args: Optional[dict] = None,
                  ignore_empty: bool = False,
+                 channel_order: str = 'bgr',
                  *,
                  backend_args: Optional[dict] = None) -> None:
         self.ignore_empty = ignore_empty
         self.to_float32 = to_float32
         self.color_type = color_type
         self.imdecode_backend = imdecode_backend
+        self.channel_order = channel_order
 
         self.file_client_args: Optional[dict] = None
         self.backend_args: Optional[dict] = None
@@ -89,7 +91,7 @@ class LoadImageFromFile(BaseTransform):
             dict: The dict contains loaded image and meta information.
         """
 
-        filename = results['img_path']
+        filename = results['img_path'][0] if isinstance(results['img_path'], list) and len(results['img_path']) == 1 else results['img_path']
         try:
             if self.file_client_args is not None:
                 file_client = fileio.FileClient.infer_client(
@@ -99,7 +101,7 @@ class LoadImageFromFile(BaseTransform):
                 img_bytes = fileio.get(
                     filename, backend_args=self.backend_args)
             img = mmcv.imfrombytes(
-                img_bytes, flag=self.color_type, backend=self.imdecode_backend)
+                img_bytes, flag=self.color_type, channel_order=self.channel_order, backend=self.imdecode_backend)
         except Exception as e:
             if self.ignore_empty:
                 return None
@@ -111,6 +113,11 @@ class LoadImageFromFile(BaseTransform):
         if self.to_float32:
             img = img.astype(np.float32)
 
+        if 'eval_bd_image_transform' in results:
+            img = Image.fromarray(img)
+            img = results['eval_bd_image_transform'](img)
+            if  type(img) == Image.Image:
+                img = np.array(img)
         results['img'] = img
         results['img_shape'] = img.shape[:2]
         results['ori_shape'] = img.shape[:2]
